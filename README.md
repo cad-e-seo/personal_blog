@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# caidéiseach — personal blog
+
+Next.js 15 (App Router, React 19) blog backed by Supabase (Postgres + Storage),
+with a block-based admin editor and an AI writing assistant.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev      # dev server at localhost:3000
+npm run build    # production build
+npm run lint     # eslint
+npm test         # node --test via tsx (no extra deps)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Requires `.env.local` (see `.env.local.example`):
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Data model (Supabase / Postgres)
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+Migrations live in `supabase/migrations/` and are **applied by hand in the
+Supabase SQL editor** (the CLI is not linked). Tables:
 
-## Learn More
+| Table | Purpose |
+|-------|---------|
+| `posts` | Blog posts. Live content is the **`editor_state`** JSONB column (Lexical editor state); plus `footnotes`, metadata (`slug`, `title`, `major_tag`, `tags`, `language`, `status`, …). |
+| `nodes` | Legacy per-block content (pre-Lexical). Still read for posts whose `editor_state` is null. |
+| `assets` | Images/media stored in Supabase Storage, referenced by posts/nodes. |
+| `interactive_components` | Embeddable interactive widgets. |
+| `post_versions` | Snapshot of a post's previous `editor_state`/`footnotes`, written by a DB **trigger** on every save (any save path). Powers post-save rollback. |
+| `ai_conversations` | One row per AI chat session, tied to a `post_id`. Holds the full **`messages`** snapshot (UIMessage array), a `title`, and `model`. Powers history/resume and the admin AI log. |
+| `ai_messages` | _Deprecated_ (migration 007). Superseded by `ai_conversations.messages`; left in place, safe to drop. |
 
-To learn more about Next.js, take a look at the following resources:
+> **Egress note:** listing/feed queries select an explicit column list
+> (`LIST_COLUMNS` in `lib/posts/queries.ts`) that **omits `editor_state`** — it's
+> the whole post body and would otherwise be shipped for every card. Single-post
+> fetches still select it.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Content rendering
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+Posts are statically generated with ISR (`revalidate = 60`). `editor_state` is
+rendered by `components/blocks/LexicalContentRenderer`. Images go through
+`next/image` with a long `minimumCacheTTL`; uploads set a 1-year `cacheControl`.
 
-## Deploy on Vercel
+## AI writing assistant
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Admin-only, lives in the post editor (`components/admin/ai/AIChatPanel.tsx`).
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+**Flow:** the panel uses the Vercel AI SDK `useChat` → `POST /api/ai/chat`, which
+streams from OpenRouter (`anthropic/claude-sonnet-4`).
+
+**Tools** (`lib/ai/tools/`):
+- `editor-tools.ts` — schema-only, **client-executed**: the AI SDK forwards the
+  call to the browser, where `lib/ai/tool-executor.ts` applies it to the live
+  Lexical editor (read/edit/suggest/create blocks).
+- `articles.ts` — **server-executed** (`execute` runs in the route):
+  `list_articles` and `get_article_markdown` let the model browse and read prior
+  posts. `get_article_markdown` returns **Markdown** (via
+  `lib/export/lexical-to-markdown.ts`), never the raw editor JSON.
+- `sources.ts` — read attached reference files.
+- `index.ts` assembles `allTools` + `sourceTools`. The chat route generates the
+  system-prompt tool manifest (name + description) from this registry so the
+  prompt never drifts. `stopWhen: stepCountIs(5)` lets the model continue after a
+  server tool returns.
+
+**Conversation management:** every conversation is tied to an article. After each
+streamed turn the panel upserts the full message list to `ai_conversations`. The
+panel's **History** lists the current article's conversations first, then others
+by recency; you can open/resume any (including from other posts) in place, or
+jump to its article. **+ New** starts a fresh conversation.
+`/admin/ai-log` is the cross-article view, grouped by article with filters.
+
+**Version rollback:** the `post_versions` trigger snapshots `editor_state` on
+every save. The editor toolbar's **History → Restore** writes a chosen version
+back (itself snapshotted first, so it's reversible).
+
+## Key paths
+
+- `lib/posts/queries.ts` / `mutations.ts` — post fetching/writing
+- `lib/supabase/{server,client}.ts` — Supabase clients
+- `lib/ai/` — system prompt, tools, tool executor, attachments
+- `app/api/ai/chat/route.ts` — AI chat endpoint
+- `app/admin/` — CMS (posts, assets, subscribers, emails, ai-log)
+
+Deployed on Vercel; **pushing to `main` deploys to production** — apply any new
+migration in Supabase first.
