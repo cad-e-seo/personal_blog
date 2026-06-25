@@ -1,4 +1,4 @@
-import { streamText, convertToModelMessages } from 'ai';
+import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { allTools, sourceTools } from '@/lib/ai/tools';
 import { createServiceClient } from '@/lib/supabase/server';
@@ -35,6 +35,10 @@ export async function POST(req: Request) {
     system,
     messages: modelMessages,
     tools,
+    // Let the server keep going after a server-executed read tool (list_articles,
+    // get_article_markdown) so the model uses the result. Client tools without an
+    // execute still stop the step loop and get forwarded to the browser as before.
+    stopWhen: stepCountIs(5),
     // Best-effort log of the turn — never blocks or fails the chat response.
     onFinish: async ({ response }) => {
       if (!conversationId) return;

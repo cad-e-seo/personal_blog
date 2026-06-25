@@ -1,7 +1,11 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
-// ─── Phase 1: Read-only tools ────────────────────────────────────────────────
+// Client-executed tools: schema-only declarations. They have no `execute`, so
+// the AI SDK forwards the call to the browser, where tool-executor.ts applies
+// it to the live Lexical editor. Grouped by phase.
+
+// ─── Phase 1: Read-only ──────────────────────────────────────────────────────
 
 const getArticleContentTool = tool({
   description:
@@ -16,8 +20,7 @@ const getArticleMetadataTool = tool({
 });
 
 const getBlockContentTool = tool({
-  description:
-    'Get the content of a specific block by its Lexical node key.',
+  description: 'Get the content of a specific block by its Lexical node key.',
   inputSchema: z.object({
     nodeKey: z.string().describe('The Lexical node key of the block to read'),
   }),
@@ -29,7 +32,7 @@ const listBlocksTool = tool({
   inputSchema: z.object({}),
 });
 
-// ─── Phase 2: Edit tools ────────────────────────────────────────────────────
+// ─── Phase 2: Edit ───────────────────────────────────────────────────────────
 
 const replaceBlockTextTool = tool({
   description:
@@ -65,7 +68,36 @@ const deleteBlockTool = tool({
   }),
 });
 
-// ─── Phase 4: Content creation tools ─────────────────────────────────────────
+// ─── Phase 3: Suggestions ────────────────────────────────────────────────────
+
+const suggestTextReplacementTool = tool({
+  description:
+    'Suggest replacing text in a block. Shows the suggestion inline with accept/reject UI rather than immediately changing it.',
+  inputSchema: z.object({
+    nodeKey: z.string().describe('The Lexical node key containing the text'),
+    originalText: z.string().describe('The exact text to be replaced'),
+    suggestedText: z.string().describe('The suggested replacement text'),
+  }),
+});
+
+const suggestBlockReplacementTool = tool({
+  description:
+    'Suggest replacing an entire block. Shows the suggestion with accept/reject UI.',
+  inputSchema: z.object({
+    nodeKey: z.string().describe('The Lexical node key of the block to suggest replacing'),
+    suggestedMarkdown: z.string().describe('The suggested replacement content as markdown'),
+  }),
+});
+
+const suggestDeletionTool = tool({
+  description: 'Suggest deleting a block. Shows the suggestion with accept/reject UI.',
+  inputSchema: z.object({
+    nodeKey: z.string().describe('The Lexical node key of the block to suggest deleting'),
+    reason: z.string().optional().describe('Reason for suggesting deletion'),
+  }),
+});
+
+// ─── Phase 4: Content creation ───────────────────────────────────────────────
 
 const createHeadingTool = tool({
   description: 'Create a heading block. Supports inline markdown formatting.',
@@ -148,59 +180,7 @@ const generateSectionTool = tool({
   }),
 });
 
-// ─── Phase 3: Suggestion tools ──────────────────────────────────────────────
-
-const suggestTextReplacementTool = tool({
-  description:
-    'Suggest replacing text in a block. Shows the suggestion inline with accept/reject UI rather than immediately changing it.',
-  inputSchema: z.object({
-    nodeKey: z.string().describe('The Lexical node key containing the text'),
-    originalText: z.string().describe('The exact text to be replaced'),
-    suggestedText: z.string().describe('The suggested replacement text'),
-  }),
-});
-
-const suggestBlockReplacementTool = tool({
-  description:
-    'Suggest replacing an entire block. Shows the suggestion with accept/reject UI.',
-  inputSchema: z.object({
-    nodeKey: z.string().describe('The Lexical node key of the block to suggest replacing'),
-    suggestedMarkdown: z.string().describe('The suggested replacement content as markdown'),
-  }),
-});
-
-const suggestDeletionTool = tool({
-  description: 'Suggest deleting a block. Shows the suggestion with accept/reject UI.',
-  inputSchema: z.object({
-    nodeKey: z.string().describe('The Lexical node key of the block to suggest deleting'),
-    reason: z.string().optional().describe('Reason for suggesting deletion'),
-  }),
-});
-
-// ─── Source tools ─────────────────────────────────────────────────────────────
-
-const getSourceContentTool = tool({
-  description:
-    'Get the full content of an attached source file by name. Use this to read reference material the user has attached.',
-  inputSchema: z.object({
-    sourceName: z.string().describe('The filename of the attached source to read'),
-  }),
-});
-
-const listSourcesTool = tool({
-  description:
-    'List all source files the user has attached to this conversation, with their names and types.',
-  inputSchema: z.object({}),
-});
-
-// ─── Tool registry (all tools, keyed by name) ───────────────────────────────
-
-export const sourceTools = {
-  get_source_content: getSourceContentTool,
-  list_sources: listSourcesTool,
-};
-
-export const allTools = {
+export const editorTools = {
   // Phase 1: Read
   get_article_content: getArticleContentTool,
   get_article_metadata: getArticleMetadataTool,
