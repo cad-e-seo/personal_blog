@@ -1,6 +1,7 @@
 'use client';
 
 import type { UIMessage } from 'ai';
+import { markdownToSafeHtmlSync } from '@/lib/utils';
 
 interface AIChatMessageProps {
   message: UIMessage;
@@ -20,10 +21,21 @@ export default function AIChatMessage({ message }: AIChatMessageProps) {
       >
         {message.parts?.map((part, i) => {
           if (part.type === 'text') {
+            // User text is their own literal input — keep it plain. Assistant text
+            // is rendered as (sanitized) Markdown.
+            if (isUser) {
+              return (
+                <div key={i} className="whitespace-pre-wrap break-words">
+                  {part.text}
+                </div>
+              );
+            }
             return (
-              <div key={i} className="whitespace-pre-wrap break-words prose-sm dark:prose-invert max-w-none">
-                {part.text}
-              </div>
+              <div
+                key={i}
+                className="break-words prose prose-sm dark:prose-invert max-w-none prose-p:my-1.5 prose-pre:my-2 prose-headings:my-2"
+                dangerouslySetInnerHTML={{ __html: markdownToSafeHtmlSync(part.text) }}
+              />
             );
           }
 

@@ -29,6 +29,17 @@ export function markdownToHtmlSync(markdown: string): string {
   return result.toString();
 }
 
+// For untrusted/model-generated markdown (e.g. AI chat): no raw-HTML passthrough,
+// so any <script>/<img onerror> in the text is escaped rather than executed.
+export function markdownToSafeHtmlSync(markdown: string): string {
+  const result = remark()
+    .use(remarkParse)
+    .use(remarkRehype) // no allowDangerousHtml -> raw HTML is escaped
+    .use(rehypeStringify)
+    .processSync(markdown);
+  return result.toString();
+}
+
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
