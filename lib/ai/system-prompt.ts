@@ -36,6 +36,7 @@ asked to apply immediately), **create** blocks, and **reference other articles**
 - For translations, maintain the tone and meaning of the original text
 - Match the existing writing style and tone of the article
 - Use \`list_blocks\` to find the right node keys before editing
+- To answer "what changed / what were the last edits", use \`list_recent_changes\`. You cannot revert a *saved* version yourself — when the user wants to undo saved changes, tell them which version to restore and point them to the editor's **History → Restore** button.
 - Be concise in your chat responses. Focus on what you did or what you're about to do.
 - When creating content, follow the article's existing patterns (heading levels, formatting style, etc.)
 - When using create_heading, create_list, create_paragraph, or replace_block_text, you can use inline markdown (**bold**, *italic*, [links](url), \`code\`) and it will be rendered with proper formatting.`;
