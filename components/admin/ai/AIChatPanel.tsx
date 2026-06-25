@@ -109,10 +109,34 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   const wasLoading = useRef(false);
+  const aiTitle = useRef<Record<string, string>>({});
+  const titleRequested = useRef<Set<string>>(new Set());
+
+  // Ask a cheap model to name the chat once; fall back to first-words meanwhile.
+  const ensureTitle = useCallback(async (id: string, seed: string) => {
+    if (titleRequested.current.has(id)) return;
+    titleRequested.current.add(id);
+    try {
+      const res = await fetch('/api/ai/title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: seed }),
+      });
+      const { title } = await res.json();
+      if (title) {
+        aiTitle.current[id] = title;
+        await getSupabaseClient().from('ai_conversations').update({ title }).eq('id', id);
+      }
+    } catch {
+      /* best-effort; keep the fallback title */
+    }
+  }, []);
+
   useEffect(() => {
     if (wasLoading.current && !isLoading) {
-      const msgs = messagesRef.current;
+      const msgs = messagesRef.current as { role: string; parts?: unknown }[];
       if (msgs.length > 0) {
+        const seed = deriveTitle(msgs);
         getSupabaseClient()
           .from('ai_conversations')
           .upsert(
@@ -120,17 +144,18 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
               id: conversationId,
               post_id: post.id,
               model: 'anthropic/claude-sonnet-4',
-              title: deriveTitle(msgs as { role: string; parts?: unknown }[]),
+              title: aiTitle.current[conversationId] ?? seed,
               messages: msgs,
               updated_at: new Date().toISOString(),
             },
             { onConflict: 'id' }
           )
           .then(({ error }) => error && console.error('Save conversation failed:', error));
+        ensureTitle(conversationId, seed);
       }
     }
     wasLoading.current = isLoading;
-  }, [isLoading, conversationId, post.id]);
+  }, [isLoading, conversationId, post.id, ensureTitle]);
 
   const startNewConversation = useCallback(() => {
     setMessages([]);
@@ -139,6 +164,7 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
   }, [setMessages]);
 
   const resumeConversation = useCallback((id: string, msgs: unknown[]) => {
+    titleRequested.current.add(id); // existing conversation already has a title
     setConversationId(id);
     setMessages((msgs as Parameters<typeof setMessages>[0]) ?? []);
     setShowHistory(false);
