@@ -3,10 +3,12 @@
 // - sourceTools are spread in separately by the chat route
 import { editorTools } from './editor-tools';
 import { articleTools } from './articles';
+import { changeTools } from './changes';
 
 export { sourceTools } from './sources';
 
 export const allTools = {
   ...editorTools,
   ...articleTools,
+  ...changeTools,
 };
