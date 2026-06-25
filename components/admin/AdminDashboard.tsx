@@ -88,6 +88,12 @@ export default function AdminDashboard({ user, stats, recentPosts }: AdminDashbo
                 >
                   Emails
                 </Link>
+                <Link
+                  href="/admin/ai-log"
+                  className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                >
+                  AI Log
+                </Link>
               </nav>
             </div>
 

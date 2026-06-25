@@ -11,6 +11,7 @@ import LexicalEditor from './lexical/LexicalEditor';
 import { Save, Eye, Settings, ChevronDown, ChevronUp, Superscript, Sparkles } from 'lucide-react';
 import NewsletterSendPanel from './NewsletterSendPanel';
 import AIChatPanel, { type AIChatPanelHandle } from './ai/AIChatPanel';
+import PostHistory from './PostHistory';
 import { EditingLanguageProvider } from '@/lib/EditingLanguageContext';
 import type { LexicalEditor as LexicalEditorType } from 'lexical';
 import { $getNodeByKey, $isElementNode, $getRoot, $setSelection, type LexicalNode } from 'lexical';
@@ -235,6 +236,8 @@ function PostEditorInner({ post, previewToken }: PostEditorProps) {
               <Superscript className="w-4 h-4" />
               Footnote
             </button>
+
+            <PostHistory postId={post.id} />
 
             <button
               onClick={() => setShowMetadata(!showMetadata)}

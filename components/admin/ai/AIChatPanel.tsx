@@ -43,12 +43,15 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
     [post, attachments]
   );
 
+  // Stable id for this chat session so the server can group logged messages.
+  const [conversationId] = useState(() => crypto.randomUUID());
+
   const transport = useMemo(
     () => new DefaultChatTransport({
       api: '/api/ai/chat',
-      body: { system: systemPrompt },
+      body: { system: systemPrompt, postId: post.id, conversationId },
     }),
-    [systemPrompt]
+    [systemPrompt, post.id, conversationId]
   );
 
   const { messages, sendMessage, addToolOutput, status, setMessages } = useChat({
