@@ -1,6 +1,16 @@
 import { createStaticClient, createServiceClient } from '@/lib/supabase/server';
 import type { Post, PostWithAsset, Node, NodeWithAsset, MajorTag } from '@/lib/supabase/types';
 
+// ponytail: listings/feeds don't need the post body. Selecting `*` shipped
+// editor_state (the full content JSONB) for every card -> the PostgREST egress.
+// Explicit column list omits editor_state + footnotes. Single-post fetches keep `*`.
+const LIST_COLUMNS = `
+  id, slug, title, description, major_tag, sub_tag, language, tags, author,
+  status, published_at, created_at, updated_at, featured_image_id, source,
+  source_url, translation_of,
+  featured_image:assets!featured_image_id(*)
+`;
+
 export async function getAllPosts(options?: {
   status?: 'published' | 'draft' | 'archived';
   majorTag?: MajorTag;
@@ -11,10 +21,7 @@ export async function getAllPosts(options?: {
 
   let query = supabase
     .from('posts')
-    .select(`
-      *,
-      featured_image:assets!featured_image_id(*)
-    `)
+    .select(LIST_COLUMNS)
     .order('published_at', { ascending: false, nullsFirst: false });
 
   if (options?.status) {
@@ -45,7 +52,8 @@ export async function getAllPosts(options?: {
     throw error;
   }
 
-  return data as PostWithAsset[];
+  // ponytail: list queries omit editor_state/footnotes by design; cast through unknown.
+  return data as unknown as PostWithAsset[];
 }
 
 export async function getPublishedPosts(options?: {
@@ -206,10 +214,7 @@ export async function searchPosts(query: string): Promise<PostWithAsset[]> {
 
   const { data, error } = await supabase
     .from('posts')
-    .select(`
-      *,
-      featured_image:assets!featured_image_id(*)
-    `)
+    .select(LIST_COLUMNS)
     .eq('status', 'published')
     .lte('published_at', new Date().toISOString())
     .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
@@ -220,7 +225,8 @@ export async function searchPosts(query: string): Promise<PostWithAsset[]> {
     throw error;
   }
 
-  return data as PostWithAsset[];
+  // ponytail: list queries omit editor_state/footnotes by design; cast through unknown.
+  return data as unknown as PostWithAsset[];
 }
 
 export async function getPublishedPostsByTag(tag: string): Promise<PostWithAsset[]> {
@@ -228,10 +234,7 @@ export async function getPublishedPostsByTag(tag: string): Promise<PostWithAsset
 
   const { data, error } = await supabase
     .from('posts')
-    .select(`
-      *,
-      featured_image:assets!featured_image_id(*)
-    `)
+    .select(LIST_COLUMNS)
     .eq('status', 'published')
     .lte('published_at', new Date().toISOString())
     .contains('tags', [tag])
@@ -242,7 +245,8 @@ export async function getPublishedPostsByTag(tag: string): Promise<PostWithAsset
     throw error;
   }
 
-  return data as PostWithAsset[];
+  // ponytail: list queries omit editor_state/footnotes by design; cast through unknown.
+  return data as unknown as PostWithAsset[];
 }
 
 export async function getAllUniqueTags(): Promise<string[]> {
@@ -281,10 +285,7 @@ export async function getTranslationsOf(postId: string, translationOf: string | 
   // Fetch all posts that are translations of the original, plus the original itself if we're on a translation
   const { data, error } = await supabase
     .from('posts')
-    .select(`
-      *,
-      featured_image:assets!featured_image_id(*)
-    `)
+    .select(LIST_COLUMNS)
     .or(`translation_of.eq.${originalId},id.eq.${originalId}`)
     .neq('id', postId);
 
@@ -293,5 +294,6 @@ export async function getTranslationsOf(postId: string, translationOf: string | 
     return [];
   }
 
-  return data as PostWithAsset[];
+  // ponytail: list queries omit editor_state/footnotes by design; cast through unknown.
+  return data as unknown as PostWithAsset[];
 }

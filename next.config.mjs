@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
+    // ponytail: images never change; cache optimized variants ~1yr so the
+    // optimizer stops re-pulling originals from Supabase every hour (egress fix).
+    minimumCacheTTL: 31536000,
     remotePatterns: [
       {
         protocol: 'https',

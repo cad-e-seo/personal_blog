@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       .upload(storagePath, buffer, {
         contentType: file.type,
         upsert: false,
+        cacheControl: '31536000', // ponytail: 1yr — images are immutable, cut egress
       });
 
     if (uploadError) {

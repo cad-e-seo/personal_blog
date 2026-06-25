@@ -22,6 +22,7 @@ export async function uploadImageFromUrl(
     .upload(storagePath, buffer, {
       contentType,
       upsert: false,
+      cacheControl: '31536000', // ponytail: 1yr — images are immutable, cut egress
     });
 
   if (uploadError) {
