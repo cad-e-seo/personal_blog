@@ -9,7 +9,19 @@ import { executeToolCall } from '@/lib/ai/tool-executor';
 import { buildSystemPrompt } from '@/lib/ai/system-prompt';
 import { extractFileContent, type Attachment } from '@/lib/ai/attachments';
 import AIChatMessage from './AIChatMessage';
-import { Sparkles, X, Minus, Send, Trash2, Paperclip, FileText, Image as ImageIcon, FileType } from 'lucide-react';
+import ConversationHistory from './ConversationHistory';
+import { getSupabaseClient } from '@/lib/supabase/client';
+import { Sparkles, X, Minus, Send, Trash2, Paperclip, FileText, Image as ImageIcon, FileType, Plus, History } from 'lucide-react';
+
+// First user message text, trimmed — used as the conversation's list title.
+function deriveTitle(messages: { role: string; parts?: unknown }[]): string {
+  const firstUser = messages.find((m) => m.role === 'user');
+  const parts = firstUser?.parts;
+  const text = Array.isArray(parts)
+    ? parts.map((p) => (p && typeof p === 'object' && typeof (p as { text?: unknown }).text === 'string' ? (p as { text: string }).text : '')).join(' ').trim()
+    : '';
+  return text.slice(0, 80) || 'Untitled chat';
+}
 
 export interface AIChatPanelHandle {
   openAndSend: (text: string) => void;
@@ -43,15 +55,16 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
     [post, attachments]
   );
 
-  // Stable id for this chat session so the server can group logged messages.
-  const [conversationId] = useState(() => crypto.randomUUID());
+  // Id for the active chat session; changes when starting/resuming a conversation.
+  const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
+  const [showHistory, setShowHistory] = useState(false);
 
   const transport = useMemo(
     () => new DefaultChatTransport({
       api: '/api/ai/chat',
-      body: { system: systemPrompt, postId: post.id, conversationId },
+      body: { system: systemPrompt },
     }),
-    [systemPrompt, post.id, conversationId]
+    [systemPrompt]
   );
 
   const { messages, sendMessage, addToolOutput, status, setMessages } = useChat({
@@ -91,6 +104,45 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
   });
 
   const isLoading = status === 'submitted' || status === 'streaming';
+
+  // Persist the full conversation when a stream finishes (powers history + resume).
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const wasLoading = useRef(false);
+  useEffect(() => {
+    if (wasLoading.current && !isLoading) {
+      const msgs = messagesRef.current;
+      if (msgs.length > 0) {
+        getSupabaseClient()
+          .from('ai_conversations')
+          .upsert(
+            {
+              id: conversationId,
+              post_id: post.id,
+              model: 'anthropic/claude-sonnet-4',
+              title: deriveTitle(msgs as { role: string; parts?: unknown }[]),
+              messages: msgs,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'id' }
+          )
+          .then(({ error }) => error && console.error('Save conversation failed:', error));
+      }
+    }
+    wasLoading.current = isLoading;
+  }, [isLoading, conversationId, post.id]);
+
+  const startNewConversation = useCallback(() => {
+    setMessages([]);
+    setConversationId(crypto.randomUUID());
+    setShowHistory(false);
+  }, [setMessages]);
+
+  const resumeConversation = useCallback((id: string, msgs: unknown[]) => {
+    setConversationId(id);
+    setMessages((msgs as Parameters<typeof setMessages>[0]) ?? []);
+    setShowHistory(false);
+  }, [setMessages]);
 
   // Expose openAndSend method for parent
   useImperativeHandle(ref, () => ({
@@ -252,6 +304,20 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
         </div>
         <div className="flex items-center gap-1">
           <button
+            onClick={startNewConversation}
+            className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors"
+            title="New conversation"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className={`p-1.5 rounded transition-colors ${showHistory ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}
+            title="Conversation history"
+          >
+            <History className="w-3.5 h-3.5" />
+          </button>
+          <button
             onClick={() => setMessages([])}
             className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded transition-colors"
             title="Clear chat"
@@ -305,7 +371,17 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
         </div>
       )}
 
+      {/* History view (swaps out the message list) */}
+      {showHistory && (
+        <ConversationHistory
+          currentPostId={post.id}
+          activeId={conversationId}
+          onSelect={resumeConversation}
+        />
+      )}
+
       {/* Messages */}
+      {!showHistory && (
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 && (
           <div className="text-center text-gray-400 dark:text-gray-500 text-sm mt-8">
@@ -320,6 +396,7 @@ const AIChatPanel = forwardRef<AIChatPanelHandle, AIChatPanelProps>(function AIC
         ))}
         <div ref={messagesEndRef} />
       </div>
+      )}
 
       {/* Input */}
       <div className="border-t border-gray-200 dark:border-gray-700 px-3 py-2.5">

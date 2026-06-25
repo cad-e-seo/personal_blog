@@ -15,20 +15,30 @@ function extractText(parts: unknown): string {
     .join(' ');
 }
 
-interface Message {
-  id: string;
+interface UIMessage {
+  id?: string;
   role: string;
-  parts: unknown;
-  tools: string[] | null;
-  created_at: string;
+  parts?: unknown;
+}
+
+// Tool names referenced in a UIMessage's parts (parts of type "tool-<name>").
+function toolNames(parts: unknown): string[] {
+  if (!Array.isArray(parts)) return [];
+  const names = parts
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+    .filter((p) => typeof p.type === 'string' && (p.type as string).startsWith('tool'))
+    .map((p) => (p.toolName as string) ?? (p.type as string).replace(/^tool-?/, ''))
+    .filter(Boolean);
+  return [...new Set(names)];
 }
 
 interface Conversation {
   id: string;
   model: string | null;
   updated_at: string;
+  title: string | null;
   posts: { title: string; slug: string } | null;
-  ai_messages: Message[];
+  messages: UIMessage[];
 }
 
 const UNATTACHED = '__none__';
@@ -45,7 +55,7 @@ export default async function AiLogPage({
 
   const { data } = await supabase
     .from('ai_conversations')
-    .select('id, model, updated_at, posts(title, slug), ai_messages(id, role, parts, tools, created_at)')
+    .select('id, model, updated_at, title, posts(title, slug), messages')
     .order('updated_at', { ascending: false })
     .limit(200);
 
@@ -114,18 +124,19 @@ export default async function AiLogPage({
               </h2>
               <div className="space-y-4">
                 {g.convos.map((c) => {
-                  const messages = [...(c.ai_messages ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at));
+                  const messages = c.messages ?? [];
                   return (
                     <div key={c.id} className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
                       <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700/40 border-b border-gray-200 dark:border-gray-700 text-xs text-gray-400">
-                        {c.model} · {new Date(c.updated_at).toLocaleString()} · {messages.length} messages
+                        <span className="text-gray-600 dark:text-gray-300">{c.title || 'Untitled chat'}</span>
+                        {' · '}{c.model} · {new Date(c.updated_at).toLocaleString()} · {messages.length} messages
                       </div>
                       <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                        {messages.map((m) => {
+                        {messages.map((m, idx) => {
                           const text = extractText(m.parts);
-                          const tools = m.tools ?? [];
+                          const tools = toolNames(m.parts);
                           return (
-                            <div key={m.id} className="px-4 py-2.5 text-sm">
+                            <div key={m.id ?? idx} className="px-4 py-2.5 text-sm">
                               <span className={`inline-block w-20 font-medium align-top ${m.role === 'user' ? 'text-gray-500' : 'text-purple-600 dark:text-purple-400'}`}>
                                 {m.role}
                               </span>
